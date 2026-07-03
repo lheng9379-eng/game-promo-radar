@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from typing import Iterable
 
@@ -61,174 +62,187 @@ EXTRA_DATA_SOURCE_COLUMNS = {
 }
 
 
+def _quote_identifier(identifier: str) -> str:
+    return f'"{identifier.replace(chr(34), chr(34) + chr(34))}"'
+
+
+def _quote_columns(columns: Iterable[str]) -> str:
+    return ", ".join(_quote_identifier(column) for column in columns)
+
+
 class RadarDB:
     def __init__(self, path: str | Path = "data/game_promo_radar.duckdb") -> None:
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path = self._prepare_db_path(Path(path))
         self.con = duckdb.connect(str(self.path))
         self.init_schema()
 
+    @staticmethod
+    def _prepare_db_path(path: Path) -> Path:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            probe = path.parent / ".write_test"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+            return path
+        except OSError:
+            fallback_dir = Path(tempfile.gettempdir()) / "game_promo_radar"
+            fallback_dir.mkdir(parents=True, exist_ok=True)
+            return fallback_dir / path.name
+
     def init_schema(self) -> None:
-        self.con.execute(
+        statements = [
             """
-            create table if not exists tasks (
-              dedupe_key varchar primary key,
-              platform varchar,
-              game_name varchar,
-              task_name varchar,
-              task_id varchar,
-              task_type varchar,
-              billing_method varchar,
-              unit_price double,
-              revenue_share double,
-              start_time varchar,
-              deadline varchar,
-              account_requirements varchar,
-              material_url varchar,
-              production_requirements varchar,
-              signup_url varchar,
-              source_url varchar,
-              first_seen_at varchar,
-              last_updated_at varchar,
-              raw_snapshot varchar,
-              confidence double,
-              task_category varchar default 'game',
-              settlement_type varchar default 'unknown',
-              content_form varchar default 'short_video',
-              target_account_type varchar,
-              publish_platforms varchar,
-              reward_rule_text varchar,
-              risk_level varchar,
-              difficulty_level integer,
-              expected_value_score integer,
-              account_match_score integer,
-              is_game_related boolean default true
+            create table if not exists "tasks" (
+              "dedupe_key" varchar primary key,
+              "platform" varchar,
+              "game_name" varchar,
+              "task_name" varchar,
+              "task_id" varchar,
+              "task_type" varchar,
+              "billing_method" varchar,
+              "unit_price" double,
+              "revenue_share" double,
+              "start_time" varchar,
+              "deadline" varchar,
+              "account_requirements" varchar,
+              "material_url" varchar,
+              "production_requirements" varchar,
+              "signup_url" varchar,
+              "source_url" varchar,
+              "first_seen_at" varchar,
+              "last_updated_at" varchar,
+              "raw_snapshot" varchar,
+              "confidence" double,
+              "task_category" varchar default 'game',
+              "settlement_type" varchar default 'unknown',
+              "content_form" varchar default 'short_video',
+              "target_account_type" varchar,
+              "publish_platforms" varchar,
+              "reward_rule_text" varchar,
+              "risk_level" varchar,
+              "difficulty_level" integer,
+              "expected_value_score" integer,
+              "account_match_score" integer,
+              "is_game_related" boolean default true
             )
+            """,
             """
-        )
+            create table if not exists "task_notes" (
+              "task_dedupe_key" varchar,
+              "note" varchar,
+              "created_at" varchar
+            )
+            """,
+            """
+            create table if not exists "crawl_runs" (
+              "source_key" varchar,
+              "source_url" varchar,
+              "status" varchar,
+              "message" varchar,
+              "created_at" varchar
+            )
+            """,
+            """
+            create table if not exists "account_profiles" (
+              "profile_key" varchar primary key,
+              "account_name" varchar,
+              "platform" varchar,
+              "account_domain" varchar,
+              "follower_count" integer,
+              "average_views" integer,
+              "content_forms" varchar,
+              "real_person" boolean,
+              "acceptable_categories" varchar,
+              "created_at" varchar,
+              "updated_at" varchar
+            )
+            """,
+            """
+            create table if not exists "data_sources" (
+              "source_key" varchar primary key,
+              "name" varchar,
+              "platform" varchar,
+              "task_category" varchar,
+              "collection_method" varchar,
+              "link" varchar,
+              "enabled" boolean,
+              "frequency" varchar,
+              "notes" varchar,
+              "next_scheduled_at" varchar,
+              "created_at" varchar,
+              "updated_at" varchar
+            )
+            """,
+            """
+            create table if not exists "import_runs" (
+              "source" varchar,
+              "source_type" varchar,
+              "success_count" integer,
+              "failure_count" integer,
+              "status" varchar,
+              "error_reason" varchar,
+              "created_at" varchar
+            )
+            """,
+            """
+            create table if not exists "settlements" (
+              "task_dedupe_key" varchar,
+              "video_url" varchar,
+              "published_at" varchar,
+              "valid_views" integer,
+              "clicks" integer,
+              "downloads" integer,
+              "activations" integer,
+              "registrations" integer,
+              "recharge_amount" double,
+              "estimated_income" double,
+              "actual_settlement" double,
+              "settlement_date" varchar,
+              "variance" double
+            )
+            """,
+        ]
+        for statement in statements:
+            self.con.execute(statement)
         self._ensure_task_columns()
-        self.con.execute(
-            """
-            create table if not exists task_notes (
-              task_dedupe_key varchar,
-              note varchar,
-              created_at varchar
-            )
-            """
-        )
-        self.con.execute(
-            """
-            create table if not exists crawl_runs (
-              source_key varchar,
-              source_url varchar,
-              status varchar,
-              message varchar,
-              created_at varchar
-            )
-            """
-        )
-        self.con.execute(
-            """
-            create table if not exists account_profiles (
-              profile_key varchar primary key,
-              account_name varchar,
-              platform varchar,
-              account_domain varchar,
-              follower_count integer,
-              average_views integer,
-              content_forms varchar,
-              real_person boolean,
-              acceptable_categories varchar,
-              created_at varchar,
-              updated_at varchar
-            )
-            """
-        )
-        self.con.execute(
-            """
-            create table if not exists data_sources (
-              source_key varchar primary key,
-              name varchar,
-              platform varchar,
-              task_category varchar,
-              collection_method varchar,
-              link varchar,
-              enabled boolean,
-              frequency varchar,
-              notes varchar,
-              next_scheduled_at varchar,
-              created_at varchar,
-              updated_at varchar
-            )
-            """
-        )
         self._ensure_data_source_columns()
-        self.con.execute(
-            """
-            create table if not exists import_runs (
-              source varchar,
-              source_type varchar,
-              success_count integer,
-              failure_count integer,
-              status varchar,
-              error_reason varchar,
-              created_at varchar
-            )
-            """
-        )
-        # Kept for backward compatibility with existing local data. New UI uses task_notes.
-        self.con.execute(
-            """
-            create table if not exists settlements (
-              task_dedupe_key varchar,
-              video_url varchar,
-              published_at varchar,
-              valid_views integer,
-              clicks integer,
-              downloads integer,
-              activations integer,
-              registrations integer,
-              recharge_amount double,
-              estimated_income double,
-              actual_settlement double,
-              settlement_date varchar,
-              variance double
-            )
-            """
-        )
 
     def _ensure_task_columns(self) -> None:
         existing = {
             row[1]
-            for row in self.con.execute("pragma table_info('tasks')").fetchall()
+            for row in self.con.execute('pragma table_info("tasks")').fetchall()
         }
         for column, definition in EXTRA_TASK_COLUMNS.items():
             if column not in existing:
-                self.con.execute(f"alter table tasks add column {column} {definition}")
+                self.con.execute(
+                    f"alter table {_quote_identifier('tasks')} add column {_quote_identifier(column)} {definition}"
+                )
 
     def _ensure_data_source_columns(self) -> None:
         existing = {
             row[1]
-            for row in self.con.execute("pragma table_info('data_sources')").fetchall()
+            for row in self.con.execute('pragma table_info("data_sources")').fetchall()
         }
         for column, definition in EXTRA_DATA_SOURCE_COLUMNS.items():
             if column not in existing:
-                self.con.execute(f"alter table data_sources add column {column} {definition}")
+                self.con.execute(
+                    f"alter table {_quote_identifier('data_sources')} add column {_quote_identifier(column)} {definition}"
+                )
 
     def upsert_tasks(self, tasks: Iterable[Task]) -> int:
         count = 0
         for task in tasks:
             rec = task.to_record()
             existing = self.con.execute(
-                "select first_seen_at from tasks where dedupe_key = ?", [rec["dedupe_key"]]
+                'select "first_seen_at" from "tasks" where "dedupe_key" = ?', [rec["dedupe_key"]]
             ).fetchone()
             if existing:
                 rec["first_seen_at"] = existing[0]
             rec["last_updated_at"] = now_iso()
-            columns = ", ".join(TASK_COLUMNS)
+            columns = _quote_columns(TASK_COLUMNS)
             placeholders = ", ".join(["?"] * len(TASK_COLUMNS))
             self.con.execute(
-                f"insert or replace into tasks ({columns}) values ({placeholders})",
+                f'insert or replace into "tasks" ({columns}) values ({placeholders})',
                 [rec.get(column) for column in TASK_COLUMNS],
             )
             count += 1
@@ -236,14 +250,14 @@ class RadarDB:
 
     def add_task_note(self, note: TaskNote) -> None:
         self.con.execute(
-            "insert into task_notes values (?, ?, ?)",
+            'insert into "task_notes" values (?, ?, ?)',
             [note.task_dedupe_key, note.note, note.created_at],
         )
 
     def upsert_account_profile(self, profile: AccountProfile) -> None:
         rec = profile.to_record()
         existing = self.con.execute(
-            "select created_at from account_profiles where profile_key = ?",
+            'select "created_at" from "account_profiles" where "profile_key" = ?',
             [rec["profile_key"]],
         ).fetchone()
         if existing:
@@ -251,7 +265,7 @@ class RadarDB:
         rec["updated_at"] = now_iso()
         self.con.execute(
             """
-            insert or replace into account_profiles values (
+            insert or replace into "account_profiles" values (
               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             """,
@@ -273,7 +287,7 @@ class RadarDB:
     def upsert_data_source(self, source: DataSource) -> None:
         rec = source.to_record()
         existing = self.con.execute(
-            "select created_at from data_sources where source_key = ?",
+            'select "created_at" from "data_sources" where "source_key" = ?',
             [rec["source_key"]],
         ).fetchone()
         if existing:
@@ -281,9 +295,9 @@ class RadarDB:
         rec["updated_at"] = now_iso()
         self.con.execute(
             """
-            insert or replace into data_sources (
-              source_key, name, platform, task_category, collection_method, link,
-              enabled, frequency, notes, next_scheduled_at, created_at, updated_at
+            insert or replace into "data_sources" (
+              "source_key", "name", "platform", "task_category", "collection_method", "link",
+              "enabled", "frequency", "notes", "next_scheduled_at", "created_at", "updated_at"
             ) values (
               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
@@ -306,19 +320,19 @@ class RadarDB:
 
     def set_data_source_enabled(self, source_key: str, enabled: bool) -> None:
         self.con.execute(
-            "update data_sources set enabled = ?, updated_at = ? where source_key = ?",
+            'update "data_sources" set "enabled" = ?, "updated_at" = ? where "source_key" = ?',
             [enabled, now_iso(), source_key],
         )
 
     def mark_data_source_collected(self, source_key: str, frequency: str) -> None:
         self.con.execute(
-            "update data_sources set next_scheduled_at = ?, updated_at = ? where source_key = ?",
+            'update "data_sources" set "next_scheduled_at" = ?, "updated_at" = ? where "source_key" = ?',
             [next_scheduled_time(frequency), now_iso(), source_key],
         )
 
     def log_import_run(self, run: ImportRun) -> None:
         self.con.execute(
-            "insert into import_runs values (?, ?, ?, ?, ?, ?, ?)",
+            'insert into "import_runs" values (?, ?, ?, ?, ?, ?, ?)',
             [
                 run.source,
                 run.source_type,
@@ -340,7 +354,7 @@ class RadarDB:
         failure_count: int | None = None,
     ) -> None:
         self.con.execute(
-            "insert into crawl_runs values (?, ?, ?, ?, ?)",
+            'insert into "crawl_runs" values (?, ?, ?, ?, ?)',
             [source_key, source_url, status, message, now_iso()],
         )
         self.log_import_run(
@@ -366,4 +380,4 @@ class RadarDB:
         }
         if table not in allowed:
             raise ValueError(f"unsupported table: {table}")
-        return self.con.execute(f"select * from {table}").df()
+        return self.con.execute(f"select * from {_quote_identifier(table)}").df()
