@@ -4,10 +4,14 @@ __pycache__/
 *.pyc
 .env
 data/game_promo_radar.duckdb
-data/game_promo_radar.duckdb.wal
+data/backups/
 data/browser-profile/
 data/exports/
 logs/*.log
-streamlit.*.log
 playwright-report/
 test-results/
+
+data/game_promo_radar.duckdb.wal
+streamlit.*.log
+*.out.log
+*.err.log

@@ -9,6 +9,7 @@ sources:
       - https://www.gamepublisher.cn/
       - https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/operation1/advertiser/pub/introduction
       - https://developer.open-douyin.com/school/course/191
+
   - key: kuaishou_spark
     name: 快手星火计划
     phase: 1
@@ -17,95 +18,133 @@ sources:
     default_task_category: game
     public_urls:
       - https://open.kuaishou.com/docs/operate/reviewSpecification/sparkProject/sparkProject.html
+
   - key: manual_import
     name: 手动导入
     phase: 1
     adapter: manual
     platform: manual
     default_task_category: other
+
   - key: manual_link
     name: 手动链接
     phase: 1
     adapter: manual
     platform: manual
     default_task_category: other
+
   - key: kuaishou_juxing
     name: 快手磁力聚星
-    phase: later
-    adapter: placeholder
+    phase: online
+    adapter: public_web
     platform: kuaishou
     default_task_category: brand
     public_urls:
       - https://k.kuaishou.com/
+
   - key: douyin_creator_center
     name: 抖音创作者服务中心/全民任务
     phase: later
     adapter: placeholder
     platform: douyin
     default_task_category: platform_incentive
+
   - key: douyin_xingtu
     name: 巨量星图公开任务
     phase: later
     adapter: placeholder
     platform: douyin
     default_task_category: brand
+
   - key: xiaohongshu_pgy
     name: 小红书蒲公英任务
     phase: later
     adapter: placeholder
     platform: xiaohongshu
     default_task_category: brand
+
   - key: xiaohongshu_creator
     name: 小红书创作者中心/官方活动
     phase: later
     adapter: placeholder
     platform: xiaohongshu
     default_task_category: platform_incentive
+
   - key: taptap_creator
-    name: TapTap创作者中心
-    phase: later
-    adapter: placeholder
+    name: TapTap 创作者中心
+    phase: online
+    adapter: public_web
     platform: taptap
     default_task_category: game
+    public_urls:
+      - https://www.taptap.cn/
+
   - key: bilibili_game_incentive
     name: B站游戏激励活动
-    phase: later
-    adapter: placeholder
+    phase: online
+    adapter: public_web
     platform: bilibili
     default_task_category: game
+    public_urls:
+      - https://www.bilibili.com/blackboard/activity-list.html
+
   - key: bilibili_creator_incentive
     name: B站创作激励/商业合作活动
     phase: later
     adapter: placeholder
     platform: bilibili
     default_task_category: platform_incentive
+
   - key: game_company_sites
     name: 游戏公司官方网站
-    phase: later
-    adapter: placeholder
+    phase: online
+    adapter: public_web
     platform: official_site
     default_task_category: game
+    public_urls: []
+
   - key: brand_official_sites
     name: 品牌/App 官方网站
     phase: later
     adapter: placeholder
     platform: official_site
     default_task_category: brand
+
   - key: document_links
     name: 飞书/腾讯文档/金山文档链接
     phase: later
     adapter: placeholder
     platform: document
     default_task_category: other
+
   - key: excel_import
     name: Excel 手动导入
     phase: 1
     adapter: manual
     platform: excel
     default_task_category: other
+
   - key: screenshot_ocr
     name: 截图 OCR 导入
     phase: later
     adapter: placeholder
     platform: ocr
     default_task_category: other
+
+search_queries:
+  - 游戏 创作者激励
+  - 游戏 推广任务
+  - 游戏 发行人计划
+  - 游戏 二创激励
+  - 投稿奖励 游戏
+  - TapTap 创作者激励
+  - B站 游戏 激励 活动
+  - 快手 游戏推广 任务
+  - 抖音 游戏发行人 任务
+  - App 推广任务 创作者激励
+  - 电商种草 达人任务
+  - 本地生活 探店 达人招募
+  - 短剧 推广 任务
+  - 品牌活动 创作者招募
+  - 小红书 蒲公英 任务
+  - 抖音 全民任务 创作者

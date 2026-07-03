@@ -1,6 +1,12 @@
 # 内容推广商机雷达
 
-个人本地使用的公开内容推广情报整理工具。系统回答这些问题：
+主项目目录：
+
+```text
+D:\CodexProjects\game-promo-radar
+```
+
+个人本地使用的公开内容推广情报整理工具。系统用于回答：
 
 - 这个推广任务是否值得做？
 - 适合什么账号做？
@@ -24,34 +30,115 @@
 - 浏览器登录资料只保存在 `data/browser-profile`，该目录已加入 `.gitignore`。
 - 未获取到的数据保存为数据库 `NULL`，页面显示“待确认”，禁止猜测。
 
-## 已实现
+## 本地启动
 
-- 抖音游戏发行人计划公开页面采集
-- 快手星火计划公开页面采集
-- 手动链接和 Excel 导入，支持平台、任务分类、结算方式、作品形式、适合账号、结算规则等字段
-- 任务去重和更新
-- 来源链接和原始快照留存
-- 可做性判断：推荐做、可以做、观望、不建议做、信息不足
-- 制作难度：简单、一般、较难、困难、无法判断
-- 风险等级、预估价值分、账号匹配度和适合账号类型输出
-- 任务库筛选：平台、任务分类、结算方式、风险等级、是否游戏相关
-- 判断依据展示
-- 即将截止提醒
-- Excel 导出
-- 任务结果人工备注
-
-## 安装运行
+推荐双击项目根目录的：
 
 ```bat
-install.bat
-run.bat
+start.bat
 ```
 
-默认数据库：`data/game_promo_radar.duckdb`
+`start.bat` 会自动进入项目目录，优先使用：
 
-## 测试
+```text
+.venv\Scripts\python.exe
+```
+
+然后启动 Streamlit，并打开：
+
+```text
+http://localhost:8503/
+```
+
+命令行等价启动方式：
+
+```bat
+cd /d D:\CodexProjects\game-promo-radar
+.venv\Scripts\python.exe -m streamlit run app.py --server.port 8503 --server.headless true --browser.gatherUsageStats false
+```
+
+`run.bat` 保留为兼容旧入口，行为与 `start.bat` 一致：同样优先使用 `.venv\Scripts\python.exe`，端口固定 `8503`，并使用相同的 Streamlit 参数。
+
+停止本项目 Streamlit：
+
+```bat
+stop.bat
+```
+
+## 自动采集
+
+自动采集是本地功能，不上传云端。配置文件保存在：
+
+```text
+data/auto_collect_config.json
+```
+
+页面路径：
+
+```text
+网上采集 -> 每日自动采集
+```
+
+注意：当前阶段自动采集只在 Streamlit 项目运行期间生效。如果电脑关机、终端关闭或 Streamlit 未运行，不会后台自动采集。Windows 计划任务可后续接入。
+
+不打开页面也可以执行一次采集：
 
 ```bat
 call .venv\Scripts\activate.bat
-pytest
+python run_once_collect.py
+```
+
+## 数据
+
+核心数据库统一为：
+
+```text
+D:\CodexProjects\game-promo-radar\data\game_promo_radar.duckdb
+```
+
+备份目录：
+
+```text
+D:\CodexProjects\game-promo-radar\data\backups
+```
+
+## 健康检查
+
+运行：
+
+```bat
+cd /d D:\CodexProjects\game-promo-radar
+.venv\Scripts\python.exe health_check.py
+```
+
+会检查：
+
+- 数据库是否存在
+- 自动采集配置是否存在
+- 最近一次自动采集时间
+- Streamlit 端口 `8503` 是否可访问
+
+如果提示“Streamlit 端口 8503 当前未启动，请运行 start.bat”，说明当前没有运行中的页面服务，不一定是错误。需要访问页面时再运行 `start.bat`。
+
+## 测试与验收
+
+```bat
+cd /d D:\CodexProjects\game-promo-radar
+.venv\Scripts\python.exe -m pytest
+.venv\Scripts\python.exe -m compileall -q app.py src tests health_check.py run_once_collect.py
+```
+
+验收通过条件：
+
+- `pytest` 为 `0 failed`
+- 编译检查无错误输出
+- `start.bat` 启动后 `http://localhost:8503/` 返回 `200`
+- `health_check.py` 能识别数据库、配置和当前端口状态
+
+## 版本追踪
+
+当前目录可以不强制初始化 Git。如需后续追踪版本、回滚改动或提交交付记录，可在项目根目录执行：
+
+```bat
+git init
 ```

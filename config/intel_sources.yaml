@@ -1,0 +1,91 @@
+sources:
+  - source_name: 抖音游戏发行人计划
+    source_type: task_platform
+    platform: 抖音
+    url: https://game.douyin.com/
+    need_login: true
+    collect_method: semi_auto
+    trust_level: high
+    enabled: true
+    notes: 公开页面可作为入口，具体任务通常需要从详情页或用户粘贴链接补充。
+  - source_name: 快手磁力聚星
+    source_type: task_platform
+    platform: 快手
+    url: https://www.kuaishou.com/
+    need_login: true
+    collect_method: semi_auto
+    trust_level: high
+    enabled: true
+    notes: 优先保存公开活动页、任务说明页和可访问快照。
+  - source_name: TapTap 创作者活动
+    source_type: creator_activity
+    platform: TapTap
+    url: https://www.taptap.cn/
+    need_login: false
+    collect_method: auto
+    trust_level: high
+    enabled: true
+    notes: 优先 moment、activity、官方公告中的创作激励和投稿奖励。
+  - source_name: B站游戏活动
+    source_type: creator_activity
+    platform: B站
+    url: https://www.bilibili.com/blackboard/
+    need_login: false
+    collect_method: auto
+    trust_level: high
+    enabled: true
+    notes: 优先 blackboard 活动页和官方动态中的活动长图。
+  - source_name: 七麦数据
+    source_type: app_rank
+    platform: App Store
+    url: https://www.qimai.cn/
+    need_login: true
+    collect_method: manual
+    trust_level: medium
+    enabled: true
+    notes: 先支持手动录入榜单与排名截图线索。
+  - source_name: DataEye
+    source_type: ad_intel
+    platform: 多平台
+    url: https://www.dataeye.com/
+    need_login: true
+    collect_method: manual
+    trust_level: medium
+    enabled: true
+    notes: 先支持手动录入投放素材数量、趋势和来源链接。
+  - source_name: AppGrowing
+    source_type: ad_intel
+    platform: 多平台
+    url: https://appgrowing.cn/
+    need_login: true
+    collect_method: manual
+    trust_level: medium
+    enabled: true
+    notes: 先支持手动录入公开可核验的买量线索。
+  - source_name: 抖音指数/巨量算数
+    source_type: heat_metric
+    platform: 抖音
+    url: https://trendinsight.oceanengine.com/
+    need_login: true
+    collect_method: manual
+    trust_level: medium
+    enabled: true
+    notes: 用于手动记录热度指数、趋势和采集时间。
+  - source_name: 手动链接
+    source_type: generic_link
+    platform: 其他
+    url: manual://link
+    need_login: false
+    collect_method: semi_auto
+    trust_level: medium
+    enabled: true
+    notes: 用户粘贴任意公开链接，系统保存标题、摘要和快照，状态为待补全。
+  - source_name: Excel 导入
+    source_type: spreadsheet
+    platform: 本地
+    url: local://excel
+    need_login: false
+    collect_method: manual
+    trust_level: medium
+    enabled: true
+    notes: 用于批量补充热度、榜单、样本、素材和风险字段。

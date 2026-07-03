@@ -1,13 +1,24 @@
 weights:
-  price_known: 15
-  deadline_days: 20
-  account_fit: 25
-  heat_score: 25
-  source_confidence: 15
+  reward_known: 25
+  deadline_available: 15
+  low_barrier: 15
+  material_available: 10
+  production_available: 10
+  public_heat: 10
+  information_completeness: 15
 deadline:
-  ideal_days_min: 3
-  ideal_days_max: 21
+  short_days: 3
+  enough_days: 7
 heat:
-  growth_full_score: 0.35
-  median_views_full_score: 50000
-
+  high_median_views: 50000
+  high_competition: high
+  low_competition: low
+difficulty_terms:
+  真人出镜: 20
+  出镜: 15
+  原创拍摄: 20
+  实拍: 15
+  复杂剪辑: 15
+  剧情: 10
+  口播: 10
+  配音: 8
