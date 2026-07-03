@@ -1,0 +1,19 @@
+[project]
+name = "game-promo-radar"
+version = "0.1.0"
+description = "Windows local radar for game promotion opportunities."
+requires-python = ">=3.12"
+dependencies = [
+  "streamlit>=1.36",
+  "duckdb>=1.0",
+  "pandas>=2.2",
+  "playwright>=1.45",
+  "openpyxl>=3.1",
+  "pyyaml>=6.0",
+  "pytest>=8.2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+

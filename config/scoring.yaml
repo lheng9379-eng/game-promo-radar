@@ -1,0 +1,13 @@
+weights:
+  price_known: 15
+  deadline_days: 20
+  account_fit: 25
+  heat_score: 25
+  source_confidence: 15
+deadline:
+  ideal_days_min: 3
+  ideal_days_max: 21
+heat:
+  growth_full_score: 0.35
+  median_views_full_score: 50000
+

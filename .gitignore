@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+data/game_promo_radar.duckdb
+data/game_promo_radar.duckdb.wal
+data/browser-profile/
+data/exports/
+logs/*.log
+streamlit.*.log
+playwright-report/
+test-results/

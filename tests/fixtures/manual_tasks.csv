@@ -1,0 +1,5 @@
+platform,game_name,task_name,task_id,task_type,billing_method,unit_price,revenue_share,start_time,deadline,account_requirements,source_url,confidence
+抖音,测试游戏A,测试CPA任务,T-001,CPA,激活,2.5,,2026-06-01,2026-07-10,粉丝1000以上,https://example.com/task-a,0.8
+抖音,测试游戏A,测试CPA任务,T-001,CPA,激活,2.5,,2026-06-01,2026-07-10,粉丝1000以上,https://example.com/task-a,0.8
+快手,测试游戏B,未知单价任务,,普通创作激励,,,,2026-06-01,2026-06-20,,https://example.com/task-b,0.5
+
