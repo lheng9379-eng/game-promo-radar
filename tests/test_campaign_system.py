@@ -51,6 +51,8 @@ def test_data_source_config_test():
     errors = validate_source_config(sources)
     assert errors == []
     assert {"official_task_platform", "search_engine", "manual", "logged_in_browser"}.issubset({s["source_type"] for s in sources})
+    taptap = next(source for source in sources if source["source_id"] == "taptap_creator")
+    assert taptap["seed_urls"]
 
 
 def test_candidate_dedupe_test(tmp_path):

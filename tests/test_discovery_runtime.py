@@ -100,8 +100,93 @@ def test_public_source_discovery_extracts_links_and_saves_candidate(tmp_path, mo
     monkeypatch.setattr(discovery, "SNAPSHOT_DIR", tmp_path / "snapshots")
     summary = run_public_sources(db, max_links_per_source=5)
     assert summary.discovered_link_count == 1
+    assert summary.new_candidate_count >= 1
+    assert len(db.df("campaign_candidates")) >= 1
+
+
+def test_public_source_seed_url_saves_candidate_when_list_has_no_links(tmp_path, monkeypatch):
+    db = RadarDB(tmp_path / "radar.duckdb")
+    db.upsert_data_source(
+        {
+            "source_id": "taptap_creator",
+            "source_name": "TapTap",
+            "source_type": "official_account_or_community",
+            "content_platform": "TapTap",
+            "base_url": "https://www.taptap.cn/",
+            "discovery_method": "public_web",
+            "login_required": False,
+            "parser_name": "public_activity_page",
+            "crawl_frequency": "daily",
+            "enabled": True,
+            "reliability_level": "B",
+        }
+    )
+
+    import game_promo_radar.discovery as discovery
+
+    monkeypatch.setattr(
+        discovery,
+        "public_discovery_sources",
+        lambda: [
+            {
+                "source_id": "taptap_creator",
+                "source_name": "TapTap",
+                "content_platform": "TapTap",
+                "base_url": "https://www.taptap.cn/",
+                "seed_urls": ["https://www.taptap.cn/moment/seed"],
+                "reliability_level": "B",
+                "login_required": False,
+            }
+        ],
+    )
+
+    def fake_fetch(url, timeout=20):
+        if url.endswith("moment/seed"):
+            return (
+                "<html><head><title>"
+                "\u6e38\u620f\u521b\u4f5c\u6fc0\u52b1\u6d3b\u52a8"
+                "</title></head><body>"
+                "\u521b\u4f5c\u8005\u53d1\u5e03\u89c6\u9891\u53c2\u4e0e\u6295\u7a3f\uff0c"
+                "\u5b58\u5728\u62a5\u540d\u5165\u53e3\uff0c\u5956\u52b1\u5f85\u9a8c\u8bc1\u3002"
+                "</body></html>"
+            )
+        return "<html><head><title>TapTap</title></head><body>home</body></html>"
+
+    monkeypatch.setattr(discovery, "fetch_html", fake_fetch)
+    monkeypatch.setattr(discovery, "SNAPSHOT_DIR", tmp_path / "snapshots")
+    summary = run_public_sources(db, max_links_per_source=5)
+    assert summary.discovered_link_count == 1
     assert summary.new_candidate_count == 1
     assert len(db.df("campaign_candidates")) == 1
+    source = db.df("data_sources").iloc[0]
+    assert bool(source["parser_working"]) is True
+    assert bool(source["candidate_produced"]) is True
+
+
+def test_source_capability_survives_config_resync(tmp_path):
+    db = RadarDB(tmp_path / "radar.duckdb")
+    record = {
+        "source_id": "search_engine_discovery",
+        "source_name": "search",
+        "source_type": "search_engine",
+        "content_platform": "all",
+        "base_url": "https://duckduckgo.com/html/",
+        "discovery_method": "keyword_combination_search",
+        "login_required": False,
+        "parser_name": "search_result_parser",
+        "crawl_frequency": "daily",
+        "enabled": True,
+        "reliability_level": "D",
+        "collector_ready": True,
+        "configured_only": False,
+    }
+    db.upsert_data_source(record)
+    db.update_source_capability("search_engine_discovery", reachable=True, parser_working=True, candidate_produced=True)
+    db.upsert_data_source(record)
+    row = db.df("data_sources").iloc[0]
+    assert bool(row["reachable"]) is True
+    assert bool(row["parser_working"]) is True
+    assert bool(row["candidate_produced"]) is True
 
 
 def test_unknown_domains_become_source_discovery_candidates(tmp_path, monkeypatch):

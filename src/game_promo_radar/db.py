@@ -59,7 +59,11 @@ TASK_COLUMNS = [
 
 class RadarDB:
     def __init__(self, path: str | Path = "data/game_promo_radar.duckdb") -> None:
-        self.path = self._prepare_db_path(Path(path))
+        requested_path = Path(path)
+        self.requested_path = requested_path
+        self.path = self._prepare_db_path(requested_path)
+        self.used_fallback_path = self.path.resolve() != requested_path.resolve()
+        self.is_writable = self._path_is_writable(self.path)
         self.con = duckdb.connect(str(self.path))
         self.init_schema()
 
@@ -75,6 +79,17 @@ class RadarDB:
             fallback_dir = Path(tempfile.gettempdir()) / "game_promo_radar"
             fallback_dir.mkdir(parents=True, exist_ok=True)
             return fallback_dir / path.name
+
+    @staticmethod
+    def _path_is_writable(path: Path) -> bool:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            probe = path.parent / ".write_test"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+            return True
+        except OSError:
+            return False
 
     def init_schema(self) -> None:
         self.con.execute(
@@ -194,6 +209,14 @@ class RadarDB:
             "last_success_at varchar",
             "last_error varchar",
             "consecutive_failures integer",
+            "configured_only boolean",
+            "collector_ready boolean",
+            "reachable boolean",
+            "login_required_state boolean",
+            "parser_working boolean",
+            "candidate_produced boolean",
+            "last_candidate_at varchar",
+            "last_checked_at varchar",
         ]:
             self.con.execute(f"alter table data_sources add column if not exists {column}")
         self.con.execute(
@@ -664,6 +687,9 @@ class RadarDB:
     def upsert_data_source(self, record: dict) -> None:
         rec = record.copy()
         rec.setdefault("consecutive_failures", 0)
+        rec.setdefault("configured_only", not bool(rec.get("collector_ready")))
+        rec.setdefault("collector_ready", bool(rec.get("collector_ready")))
+        rec.setdefault("login_required_state", bool(rec.get("login_required")))
         columns = [row[1] for row in self.con.execute("pragma table_info('data_sources')").fetchall()]
         legacy_defaults = {
             "source_key": rec.get("source_id"),
@@ -693,6 +719,19 @@ class RadarDB:
         self.con.execute(
             f"insert into data_sources ({', '.join(columns)}) values ({placeholders})",
             [rec[col] for col in columns],
+        )
+
+    def update_source_capability(self, source_id: str, **updates) -> None:
+        columns = [row[1] for row in self.con.execute("pragma table_info('data_sources')").fetchall()]
+        valid = {key: value for key, value in updates.items() if key in columns}
+        if not valid:
+            return
+        valid["last_checked_at"] = valid.get("last_checked_at") or now_iso()
+        update_columns = list(valid)
+        assignments = ", ".join(f"{col} = ?" for col in update_columns)
+        self.con.execute(
+            f"update data_sources set {assignments} where source_id = ?",
+            [valid[col] for col in update_columns] + [source_id],
         )
 
     def upsert_campaign_candidate(self, record: dict) -> str:

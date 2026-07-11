@@ -275,10 +275,26 @@ def run_search(db: RadarDB, *, max_queries: int = 24, max_results_per_query: int
             results = search_results(query, max_results=max_results_per_query)
             summary.request_success_count += 1
             summary.search_result_count += len(results)
+            db.update_source_capability(
+                "search_engine_discovery",
+                collector_ready=True,
+                configured_only=False,
+                reachable=True,
+                parser_working=bool(results),
+                login_required_state=False,
+            )
         except Exception as exc:
             summary.request_failure_count += 1
             summary.failed_sources.append(f"search:{query}: {exc}")
             summary.filter_reasons["request_failed"] += 1
+            db.update_source_capability(
+                "search_engine_discovery",
+                collector_ready=True,
+                configured_only=False,
+                reachable=False,
+                parser_working=False,
+                last_error=str(exc),
+            )
             continue
         for item in results:
             url = normalize_source_url(item.url)
@@ -330,6 +346,11 @@ def run_search(db: RadarDB, *, max_queries: int = 24, max_results_per_query: int
                 summary.new_candidate_count += 1
             else:
                 summary.updated_candidate_count += 1
+            db.update_source_capability(
+                "search_engine_discovery",
+                candidate_produced=True,
+                last_candidate_at=now_iso(),
+            )
             if candidate.get("risk_level") == "高" or candidate.get("status") == "疑似风险":
                 summary.risk_candidate_count += 1
             _save_discovery_record(
@@ -374,11 +395,14 @@ def public_discovery_sources() -> list[dict]:
     sources = load_platform_sources(SOURCE_CONFIG)
     result = []
     for source in sources:
-        if source.get("login_required") or not source.get("enabled"):
+        if not source.get("enabled"):
             continue
-        if not str(source.get("base_url") or "").startswith("http"):
+        discovery_method = str(source.get("discovery_method") or "")
+        has_public_path = "public_web" in discovery_method or source.get("seed_urls")
+        if source.get("login_required") and not has_public_path:
             continue
         if source.get("source_id") in {
+            "douyin_game_publisher",
             "bilibili_creator_activity",
             "taptap_creator",
             "haoyou_kuaibao",
@@ -398,33 +422,85 @@ def run_public_sources(db: RadarDB, *, max_links_per_source: int = 10) -> Discov
     for source in sources:
         source_id = source.get("source_id")
         base_url = source.get("base_url")
-        try:
-            html = fetch_html(base_url)
-            summary.request_success_count += 1
-        except Exception as exc:
-            summary.request_failure_count += 1
-            summary.failed_sources.append(f"{source_id}:{base_url}: {exc}")
-            summary.filter_reasons["request_failed"] += 1
-            continue
-        list_snapshot = save_snapshot(SNAPSHOT_DIR, f"{source_id}_list", html)
-        title = _title_from_html(html) or source.get("source_name")
-        list_text = _clean_html_text(html)[:5000]
-        _save_discovery_record(
-            db,
-            source_id=source_id,
-            method="public-sources-list",
-            url=base_url,
-            title=title,
-            snippet=source.get("source_name"),
-            detail_status="fetched",
-            filter_status="list_page",
-            filter_reason="list_page_snapshot",
-            raw_text=list_text,
-            raw_snapshot=list_snapshot,
-        )
-        links = _extract_recent_links(base_url, html, max_links=max_links_per_source)
+        seed_urls = [str(url) for url in source.get("seed_urls") or [] if str(url).startswith("http")]
+        html = None
+        list_snapshot = None
+        list_saved = False
+        links: list[CandidateLink] = []
+        if str(base_url or "").startswith("http"):
+            try:
+                html = fetch_html(base_url)
+                summary.request_success_count += 1
+                db.update_source_capability(
+                    source_id,
+                    collector_ready=True,
+                    configured_only=False,
+                    reachable=True,
+                    login_required_state=bool(source.get("login_required")),
+                )
+            except Exception as exc:
+                summary.request_failure_count += 1
+                summary.failed_sources.append(f"{source_id}:{base_url}: {exc}")
+                summary.filter_reasons["request_failed"] += 1
+                db.update_source_capability(
+                    source_id,
+                    collector_ready=True,
+                    configured_only=False,
+                    reachable=False,
+                    parser_working=False,
+                    last_error=str(exc),
+                )
+        else:
+            db.update_source_capability(
+                source_id,
+                collector_ready=True,
+                configured_only=False,
+                login_required_state=bool(source.get("login_required")),
+            )
+        if html:
+            list_snapshot = save_snapshot(SNAPSHOT_DIR, f"{source_id}_list", html)
+            title = _title_from_html(html) or source.get("source_name")
+            list_text = _clean_html_text(html)[:5000]
+            _save_discovery_record(
+                db,
+                source_id=source_id,
+                method="public-sources-list",
+                url=base_url,
+                title=title,
+                snippet=source.get("source_name"),
+                detail_status="fetched",
+                filter_status="list_page",
+                filter_reason="list_page_snapshot",
+                raw_text=list_text,
+                raw_snapshot=list_snapshot,
+            )
+            candidate_id = _persist_candidate(
+                db,
+                summary,
+                source_id=source_id,
+                source_platform=source.get("content_platform"),
+                content_platform=source.get("content_platform"),
+                source_reliability=source.get("reliability_level"),
+                url=base_url,
+                title=title,
+                snippet=source.get("source_name"),
+                detail_text=list_text,
+                snapshot_path=list_snapshot,
+            )
+            list_saved = bool(candidate_id)
+            if list_saved:
+                db.update_source_capability(source_id, candidate_produced=True, last_candidate_at=now_iso())
+            links = _extract_recent_links(base_url, html, max_links=max_links_per_source)
+        seen_links = {normalize_source_url(link.url) for link in links}
+        for seed_url in seed_urls:
+            normalized_seed = normalize_source_url(seed_url)
+            if normalized_seed in seen_links:
+                continue
+            links.append(CandidateLink(url=normalized_seed, text=str(source.get("source_name") or "seed"), score=5, source_url=base_url))
+            seen_links.add(normalized_seed)
         summary.discovered_link_count += len(links)
-        if not links:
+        db.update_source_capability(source_id, parser_working=bool(links or list_saved))
+        if not links and not list_saved:
             summary.filter_reasons["no_activity_links_on_list"] += 1
         for link in links:
             detail_text = None
@@ -452,6 +528,12 @@ def run_public_sources(db: RadarDB, *, max_links_per_source: int = 10) -> Discov
                 detail_text=detail_text,
                 snapshot_path=snapshot_path,
             )
+            if summary.new_candidate_count or summary.updated_candidate_count:
+                db.update_source_capability(
+                    source_id,
+                    candidate_produced=True,
+                    last_candidate_at=now_iso(),
+                )
         time.sleep(0.5)
     summary.finished_at = now_iso()
     _update_source_discovery(db)

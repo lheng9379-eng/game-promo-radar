@@ -186,6 +186,10 @@ sources:
     source_type: official_account_or_community
     content_platform: TapTap
     base_url: https://www.taptap.cn/
+    seed_urls:
+      - https://www.taptap.cn/moment/818155807949458862
+      - https://www.taptap.cn/moment/812035819974954959
+      - https://www.taptap.cn/moment/809013787729330483
     discovery_method: public_web
     login_required: false
     parser_name: public_activity_page

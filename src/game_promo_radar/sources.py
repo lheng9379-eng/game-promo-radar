@@ -33,6 +33,19 @@ SOURCE_TYPES = {
     "auto_discovered_candidate",
 }
 
+COLLECTOR_READY_SOURCE_IDS = {
+    "search_engine_discovery",
+    "douyin_game_publisher",
+    "bilibili_creator_activity",
+    "taptap_creator",
+    "haoyou_kuaibao",
+    "kuaishou_creator_activity",
+    "xiaohongshu_creator_activity",
+    "game_official_sites",
+    "brand_official_sites",
+    "manual_link",
+}
+
 
 def load_platform_sources(path: str | Path = "PLATFORM_SOURCE_LIST.yaml") -> list[dict[str, Any]]:
     file = Path(path)
@@ -43,9 +56,14 @@ def load_platform_sources(path: str | Path = "PLATFORM_SOURCE_LIST.yaml") -> lis
 
 def normalize_source_record(record: dict[str, Any]) -> dict[str, Any]:
     normalized = {field: record.get(field) for field in REQUIRED_SOURCE_FIELDS}
+    normalized["seed_urls"] = [str(url) for url in record.get("seed_urls") or [] if str(url).strip()]
     normalized["enabled"] = bool(normalized.get("enabled"))
     normalized["login_required"] = bool(normalized.get("login_required"))
     normalized["consecutive_failures"] = int(normalized.get("consecutive_failures") or 0)
+    source_id = str(normalized.get("source_id") or "")
+    normalized["collector_ready"] = source_id in COLLECTOR_READY_SOURCE_IDS
+    normalized["configured_only"] = not normalized["collector_ready"]
+    normalized["login_required_state"] = normalized["login_required"]
     return normalized
 
 

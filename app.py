@@ -240,6 +240,25 @@ def recent_collect_time() -> str:
     return str(logs["created_at"].dropna().max() or "暂无")
 
 
+def runtime_environment_section() -> None:
+    candidates = DB.df("campaign_candidates")
+    campaigns = DB.df("campaigns")
+    current_path = str(DB.path.resolve())
+    requested_path = str(DB.requested_path.resolve())
+    if DB.used_fallback_path:
+        st.warning("当前正在使用临时回退数据库，命令行采集与页面可能读取不同数据库。")
+    st.subheader("运行环境")
+    cols = st.columns(5)
+    cols[0].metric("候选商机", len(candidates))
+    cols[1].metric("正式商机", len(campaigns))
+    cols[2].metric("数据库可写", "是" if DB.is_writable else "否")
+    cols[3].metric("临时回退", "是" if DB.used_fallback_path else "否")
+    cols[4].metric("最近采集", recent_collect_time())
+    st.caption(f"当前数据库路径：{current_path}")
+    if current_path != requested_path:
+        st.caption(f"请求数据库路径：{requested_path}")
+
+
 def campaign_candidates_df() -> pd.DataFrame:
     df = DB.df("campaign_candidates")
     if df.empty:
@@ -262,6 +281,26 @@ def source_status_df() -> pd.DataFrame:
     sources = DB.df("data_sources")
     if sources.empty:
         return sources
+    for column, default in [
+        ("configured_only", False),
+        ("collector_ready", False),
+        ("reachable", None),
+        ("login_required_state", False),
+        ("parser_working", None),
+        ("candidate_produced", False),
+        ("last_candidate_at", None),
+        ("last_checked_at", None),
+    ]:
+        if column not in sources.columns:
+            sources[column] = default
+    sources["采集能力"] = sources.apply(
+        lambda row: "仅配置" if bool(row.get("configured_only")) else ("已有采集器" if bool(row.get("collector_ready")) else "未实现采集器"),
+        axis=1,
+    )
+    sources["最近可达"] = sources["reachable"].map({True: "可访问", False: "不可访问"}).fillna("未检查")
+    sources["解析状态"] = sources["parser_working"].map({True: "可解析", False: "不可解析"}).fillna("未检查")
+    sources["产出候选"] = sources["candidate_produced"].map({True: "是", False: "否"}).fillna("否")
+    sources["登录要求"] = sources["login_required_state"].map({True: "需要登录", False: "公开/无需登录"}).fillna("未确认")
     logs = DB.df("crawl_runs")
     if logs.empty:
         for column in ["status", "message", "created_at", "failure_count", "login_state"]:
@@ -271,9 +310,9 @@ def source_status_df() -> pd.DataFrame:
     for column in ["status", "message", "created_at", "failure_count", "login_state"]:
         if column not in latest.columns:
             latest[column] = None
-    latest = latest[["source_key", "status", "message", "created_at", "failure_count", "login_state"]]
-    merged = sources.merge(latest, left_on="source_id", right_on="source_key", how="left")
-    return merged.drop(columns=["source_key"])
+    latest = latest[["source_key", "status", "message", "created_at", "failure_count", "login_state"]].rename(columns={"source_key": "latest_source_key"})
+    merged = sources.merge(latest, left_on="source_id", right_on="latest_source_key", how="left")
+    return merged.drop(columns=["latest_source_key"])
 
 
 def recent_discovery_summary() -> dict:
@@ -754,6 +793,7 @@ kpi_dashboard(df)
 tabs = st.tabs(["首页", "情报库", "网上采集", "高价值待确认", "扩展情报", "历史任务", "截止提醒", "热度分析", "导入导出", "数据源", "结果备注", "运行日志", "候选商机", "正式商机"])
 
 with tabs[0]:
+    runtime_environment_section()
     if df.empty:
         st.info("暂无任务。请先运行网上采集或导入 Excel。")
     else:
@@ -782,7 +822,7 @@ with tabs[0]:
             if source_status.empty:
                 st.info("暂无数据源状态。")
             else:
-                st.dataframe(display_df(source_status[["source_name", "enabled", "reliability_level", "status", "consecutive_failures"]].head(8)), width="stretch", hide_index=True)
+                st.dataframe(display_df(source_status[["source_name", "enabled", "采集能力", "最近可达", "解析状态", "产出候选"]].head(8)), width="stretch", hide_index=True)
         with cols[3]:
             st.markdown("**采集失败提醒**")
             logs = DB.df("crawl_runs")
