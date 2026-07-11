@@ -4,6 +4,8 @@ __pycache__/
 *.pyc
 .env
 data/game_promo_radar.duckdb
+data/*.json
+data/*.txt
 data/backups/
 data/browser-profile/
 data/exports/
@@ -15,3 +17,7 @@ data/game_promo_radar.duckdb.wal
 streamlit.*.log
 *.out.log
 *.err.log
+data/snapshots/
+data/reports/
+screenshots/
+data/browser-profile/

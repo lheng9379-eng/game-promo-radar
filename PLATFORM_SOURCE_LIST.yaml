@@ -1,0 +1,309 @@
+sources:
+  - source_id: douyin_xingtu
+    source_name: 抖音巨量星图
+    source_type: official_task_platform
+    content_platform: 抖音
+    base_url: https://www.xingtu.cn/
+    discovery_method: logged_in_browser
+    login_required: true
+    parser_name: playwright_visible_page
+    crawl_frequency: manual
+    enabled: true
+    reliability_level: A
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: douyin_game_publisher
+    source_name: 抖音游戏发行人计划
+    source_type: official_task_platform
+    content_platform: 抖音
+    base_url: https://www.gamepublisher.cn/
+    discovery_method: public_web_and_logged_in_browser
+    login_required: true
+    parser_name: public_activity_page
+    crawl_frequency: daily
+    enabled: true
+    reliability_level: A
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: douyin_short_drama
+    source_name: 抖音短剧推广
+    source_type: official_task_platform
+    content_platform: 抖音
+    base_url: https://www.douyin.com/
+    discovery_method: logged_in_browser
+    login_required: true
+    parser_name: playwright_visible_page
+    crawl_frequency: manual
+    enabled: false
+    reliability_level: A
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: kuaishou_juxing
+    source_name: 快手磁力聚星
+    source_type: official_task_platform
+    content_platform: 快手
+    base_url: https://k.kuaishou.com/
+    discovery_method: public_web_and_logged_in_browser
+    login_required: true
+    parser_name: public_activity_page
+    crawl_frequency: daily
+    enabled: true
+    reliability_level: A
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: kuaishou_creator_activity
+    source_name: 快手创作者活动
+    source_type: official_account_or_community
+    content_platform: 快手
+    base_url: https://www.kuaishou.com/
+    discovery_method: search_engine
+    login_required: false
+    parser_name: public_activity_page
+    crawl_frequency: weekly
+    enabled: true
+    reliability_level: B
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: xiaohongshu_pugongying
+    source_name: 小红书蒲公英
+    source_type: official_task_platform
+    content_platform: 小红书
+    base_url: https://pgy.xiaohongshu.com/
+    discovery_method: logged_in_browser
+    login_required: true
+    parser_name: playwright_visible_page
+    crawl_frequency: manual
+    enabled: false
+    reliability_level: A
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: xiaohongshu_creator_activity
+    source_name: 小红书创作活动
+    source_type: official_account_or_community
+    content_platform: 小红书
+    base_url: https://www.xiaohongshu.com/
+    discovery_method: search_engine
+    login_required: false
+    parser_name: public_activity_page
+    crawl_frequency: weekly
+    enabled: true
+    reliability_level: B
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: bilibili_huahuo
+    source_name: B站花火
+    source_type: official_task_platform
+    content_platform: B站
+    base_url: https://huahuo.bilibili.com/
+    discovery_method: logged_in_browser
+    login_required: true
+    parser_name: playwright_visible_page
+    crawl_frequency: manual
+    enabled: false
+    reliability_level: A
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: bilibili_creator_activity
+    source_name: B站创作中心活动
+    source_type: official_account_or_community
+    content_platform: B站
+    base_url: https://www.bilibili.com/blackboard/activity-list.html
+    discovery_method: public_web
+    login_required: false
+    parser_name: public_activity_page
+    crawl_frequency: daily
+    enabled: true
+    reliability_level: A
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: bilibili_reward_plan
+    source_name: B站悬赏计划
+    source_type: official_task_platform
+    content_platform: B站
+    base_url: https://member.bilibili.com/
+    discovery_method: logged_in_browser
+    login_required: true
+    parser_name: playwright_visible_page
+    crawl_frequency: manual
+    enabled: false
+    reliability_level: A
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: weibo_weitask
+    source_name: 微博微任务
+    source_type: official_task_platform
+    content_platform: 微博
+    base_url: https://weirenwu.weibo.com/
+    discovery_method: logged_in_browser
+    login_required: true
+    parser_name: playwright_visible_page
+    crawl_frequency: manual
+    enabled: false
+    reliability_level: A
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: zhihu_cheese_brand
+    source_name: 知乎芝士平台和品牌任务
+    source_type: official_task_platform
+    content_platform: 知乎
+    base_url: https://www.zhihu.com/
+    discovery_method: logged_in_browser
+    login_required: true
+    parser_name: playwright_visible_page
+    crawl_frequency: manual
+    enabled: false
+    reliability_level: A
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: wechat_channels_creator
+    source_name: 微信视频号创作者任务
+    source_type: official_task_platform
+    content_platform: 视频号
+    base_url: https://channels.weixin.qq.com/
+    discovery_method: logged_in_browser
+    login_required: true
+    parser_name: playwright_visible_page
+    crawl_frequency: manual
+    enabled: false
+    reliability_level: A
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: taptap_creator
+    source_name: TapTap
+    source_type: official_account_or_community
+    content_platform: TapTap
+    base_url: https://www.taptap.cn/
+    discovery_method: public_web
+    login_required: false
+    parser_name: public_activity_page
+    crawl_frequency: daily
+    enabled: true
+    reliability_level: B
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: haoyou_kuaibao
+    source_name: 好游快爆
+    source_type: official_account_or_community
+    content_platform: 好游快爆
+    base_url: https://www.3839.com/
+    discovery_method: search_engine
+    login_required: false
+    parser_name: public_activity_page
+    crawl_frequency: weekly
+    enabled: true
+    reliability_level: B
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: game_official_sites
+    source_name: 游戏官方网站
+    source_type: brand_or_game_site
+    content_platform: 多平台
+    base_url: manual://game-official-sites
+    discovery_method: user_seed_and_search_engine
+    login_required: false
+    parser_name: public_activity_page
+    crawl_frequency: weekly
+    enabled: true
+    reliability_level: B
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: game_official_accounts
+    source_name: 游戏官方微博、B站、抖音等公开账号
+    source_type: official_account_or_community
+    content_platform: 多平台
+    base_url: manual://game-official-accounts
+    discovery_method: user_seed_and_search_engine
+    login_required: false
+    parser_name: public_activity_page
+    crawl_frequency: weekly
+    enabled: true
+    reliability_level: B
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: brand_official_sites
+    source_name: 品牌官网和品牌活动页
+    source_type: brand_or_game_site
+    content_platform: 多平台
+    base_url: manual://brand-official-sites
+    discovery_method: user_seed_and_search_engine
+    login_required: false
+    parser_name: public_activity_page
+    crawl_frequency: weekly
+    enabled: true
+    reliability_level: B
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: search_engine_discovery
+    source_name: 搜索引擎发现
+    source_type: search_engine
+    content_platform: 多平台
+    base_url: https://duckduckgo.com/html/
+    discovery_method: keyword_combination_search
+    login_required: false
+    parser_name: search_result_parser
+    crawl_frequency: daily
+    enabled: true
+    reliability_level: D
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: manual_link
+    source_name: 用户手动添加
+    source_type: manual
+    content_platform: 多平台
+    base_url: manual://link
+    discovery_method: manual
+    login_required: false
+    parser_name: manual_fields
+    crawl_frequency: manual
+    enabled: true
+    reliability_level: C
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: logged_in_browser
+    source_name: 登录后浏览器采集
+    source_type: logged_in_browser
+    content_platform: 多平台
+    base_url: local://playwright-persistent-profile
+    discovery_method: user_visible_browser
+    login_required: true
+    parser_name: playwright_visible_page
+    crawl_frequency: manual
+    enabled: true
+    reliability_level: C
+    last_success_at:
+    last_error:
+    consecutive_failures: 0
+  - source_id: auto_discovered_candidate
+    source_name: 候选来源自动发现
+    source_type: auto_discovered_candidate
+    content_platform: 多平台
+    base_url: internal://candidate-links
+    discovery_method: link_graph
+    login_required: false
+    parser_name: public_activity_page
+    crawl_frequency: daily
+    enabled: true
+    reliability_level: D
+    last_success_at:
+    last_error:
+    consecutive_failures: 0

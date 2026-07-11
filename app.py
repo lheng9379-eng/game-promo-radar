@@ -16,7 +16,10 @@ from game_promo_radar.adapters.base import save_snapshot
 from game_promo_radar.adapters.mediacrawler import MediaCrawlerAdapter
 from game_promo_radar.adapters.public_web import DouyinGamePublisherAdapter, KuaishouSparkAdapter
 from game_promo_radar.analysis import analyze_task
+from game_promo_radar.campaigns import campaign_record_from_candidate, candidate_from_task_like, validate_candidate
 from game_promo_radar.db import RadarDB
+from game_promo_radar.discovery import run_public_sources as run_discovery_public_sources
+from game_promo_radar.discovery import run_search as run_discovery_search
 from game_promo_radar.extractors import clean_text, extract_opportunity_fields
 from game_promo_radar.intel import (
     INTEL_STATUS_OPTIONS,
@@ -58,6 +61,7 @@ from game_promo_radar.scheduler import (
     save_auto_config,
     should_run_auto_collect,
 )
+from game_promo_radar.sources import sync_sources_to_db, validate_source_config
 from game_promo_radar.ui import (
     DIFFICULTY_COLORS,
     FEASIBILITY_COLORS,
@@ -75,6 +79,8 @@ DB = RadarDB(ROOT / "data" / "game_promo_radar.duckdb")
 AUTO_CONFIG_PATH = ROOT / "data" / "auto_collect_config.json"
 AUTO_RUNS_PATH = ROOT / "data" / "auto_collect_runs.json"
 ALERT_KEYS_PATH = ROOT / "data" / "alert_keys.json"
+PLATFORM_SOURCE_PATH = ROOT / "PLATFORM_SOURCE_LIST.yaml"
+PLATFORM_SOURCES = sync_sources_to_db(DB, PLATFORM_SOURCE_PATH)
 
 
 def sources_config() -> dict:
@@ -232,6 +238,68 @@ def recent_collect_time() -> str:
     if logs.empty or "created_at" not in logs.columns:
         return "暂无"
     return str(logs["created_at"].dropna().max() or "暂无")
+
+
+def campaign_candidates_df() -> pd.DataFrame:
+    df = DB.df("campaign_candidates")
+    if df.empty:
+        return df
+    df["来源链接"] = df["source_url"]
+    df["报名入口"] = df["registration_url"]
+    return df
+
+
+def campaigns_df() -> pd.DataFrame:
+    df = DB.df("campaigns")
+    if df.empty:
+        return df
+    df["来源链接"] = df["source_url"]
+    df["报名入口"] = df["registration_url"]
+    return df
+
+
+def source_status_df() -> pd.DataFrame:
+    sources = DB.df("data_sources")
+    if sources.empty:
+        return sources
+    logs = DB.df("crawl_runs")
+    if logs.empty:
+        for column in ["status", "message", "created_at", "failure_count", "login_state"]:
+            sources[column] = None
+        return sources
+    latest = logs.sort_values("created_at").groupby("source_key").tail(1)
+    for column in ["status", "message", "created_at", "failure_count", "login_state"]:
+        if column not in latest.columns:
+            latest[column] = None
+    latest = latest[["source_key", "status", "message", "created_at", "failure_count", "login_state"]]
+    merged = sources.merge(latest, left_on="source_id", right_on="source_key", how="left")
+    return merged.drop(columns=["source_key"])
+
+
+def recent_discovery_summary() -> dict:
+    logs = DB.df("crawl_runs")
+    if logs.empty:
+        return {}
+    rows = logs[logs["source_key"].astype(str).str.startswith("discovery_")]
+    if rows.empty:
+        return {}
+    row = rows.sort_values("created_at").iloc[-1].to_dict()
+    try:
+        return {"created_at": row.get("created_at"), **yaml.safe_load(row.get("message") or "{}")}
+    except Exception:
+        return {"created_at": row.get("created_at"), "message": row.get("message")}
+
+
+def candidate_dashboard() -> None:
+    candidates = campaign_candidates_df()
+    campaigns = campaigns_df()
+    sources = source_status_df()
+    cols = st.columns(5)
+    cols[0].metric("待验证候选", 0 if candidates.empty else int((candidates["status"] == "待验证").sum()))
+    cols[1].metric("验证通过候选", 0 if candidates.empty else int((candidates["status"] == "验证通过").sum()))
+    cols[2].metric("疑似风险候选", 0 if candidates.empty else int((candidates["status"] == "疑似风险").sum()))
+    cols[3].metric("正式商机", len(campaigns))
+    cols[4].metric("启用数据源", 0 if sources.empty else int(sources["enabled"].sum()))
 
 
 def filtered_tasks(df: pd.DataFrame) -> pd.DataFrame:
@@ -683,12 +751,46 @@ st.caption("个人本地公开情报工具：覆盖游戏、App、电商种草�
 df = analyzed_tasks()
 kpi_dashboard(df)
 
-tabs = st.tabs(["首页", "情报库", "网上采集", "高价值待确认", "扩展情报", "历史任务", "截止提醒", "热度分析", "导入导出", "数据源", "结果备注", "运行日志"])
+tabs = st.tabs(["首页", "情报库", "网上采集", "高价值待确认", "扩展情报", "历史任务", "截止提醒", "热度分析", "导入导出", "数据源", "结果备注", "运行日志", "候选商机", "正式商机"])
 
 with tabs[0]:
     if df.empty:
         st.info("暂无任务。请先运行网上采集或导入 Excel。")
     else:
+        st.subheader("商机发现决策概览")
+        candidate_dashboard()
+        candidates = campaign_candidates_df()
+        campaigns = campaigns_df()
+        source_status = source_status_df()
+        cols = st.columns(4)
+        with cols[0]:
+            st.markdown("**强烈推荐和推荐任务**")
+            if campaigns.empty:
+                st.info("暂无正式推荐商机。")
+            else:
+                recs = campaigns[campaigns["recommendation"].isin(["强烈推荐", "推荐做"])].head(5)
+                st.dataframe(display_df(recs[["campaign_name", "recommendation", "expected_income", "expected_hourly_income", "来源链接"]]), width="stretch", hide_index=True, column_config=source_link_column_config())
+        with cols[1]:
+            st.markdown("**待验证候选来源**")
+            if candidates.empty:
+                st.info("暂无候选商机。")
+            else:
+                pending = candidates[candidates["status"].isin(["待验证", "疑似风险"])].head(5)
+                st.dataframe(display_df(pending[["campaign_name", "status", "source_reliability", "risk_level", "来源链接"]]), width="stretch", hide_index=True, column_config=source_link_column_config())
+        with cols[2]:
+            st.markdown("**数据源运行状态**")
+            if source_status.empty:
+                st.info("暂无数据源状态。")
+            else:
+                st.dataframe(display_df(source_status[["source_name", "enabled", "reliability_level", "status", "consecutive_failures"]].head(8)), width="stretch", hide_index=True)
+        with cols[3]:
+            st.markdown("**采集失败提醒**")
+            logs = DB.df("crawl_runs")
+            failed = logs[logs["status"] != "ok"].tail(5) if not logs.empty else logs
+            if failed.empty:
+                st.info("暂无采集失败提醒。")
+            else:
+                st.dataframe(display_df(failed[["source_key", "status", "message", "created_at"]]), width="stretch", hide_index=True)
         st.subheader("今日提醒")
         recent_runs = load_auto_runs(AUTO_RUNS_PATH)
         latest_summary = recent_runs[-1] if recent_runs else None
@@ -1402,6 +1504,7 @@ with tabs[8]:
                 }
             )
             DB.upsert_tasks([task])
+            DB.upsert_campaign_candidate(candidate_from_task_like(task, source_id="manual_link"))
             st.success("已保存。")
     uploaded = st.file_uploader("导入 Excel", type=["xlsx"])
     if uploaded:
@@ -1409,6 +1512,8 @@ with tabs[8]:
         tmp.write_bytes(uploaded.getvalue())
         imported = import_excel(tmp)
         DB.upsert_tasks(imported)
+        for task in imported:
+            DB.upsert_campaign_candidate(candidate_from_task_like(task, source_id="excel_import"))
         import_extended_excel_rows(pd.read_excel(tmp), imported)
         st.success(f"已导入 {len(imported)} 条。")
     if not df.empty and st.button("导出 Excel"):
@@ -1418,6 +1523,20 @@ with tabs[8]:
 
 with tabs[9]:
     st.subheader("数据源")
+    source_errors = validate_source_config(PLATFORM_SOURCES)
+    if source_errors:
+        st.error("新数据源配置存在问题：\n" + "\n".join(source_errors))
+    else:
+        st.success("新数据源配置校验通过。")
+    st.markdown("**分层数据源配置**")
+    st.dataframe(display_df(pd.DataFrame(PLATFORM_SOURCES)), width="stretch", hide_index=True)
+    st.markdown("**数据源运行状态**")
+    source_status = source_status_df()
+    if source_status.empty:
+        st.info("暂无数据源运行状态。")
+    else:
+        st.dataframe(display_df(source_status), width="stretch", hide_index=True, column_config={"base_url": st.column_config.LinkColumn("base_url", display_text="打开")})
+    st.markdown("**旧版采集源配置**")
     cfg = sources_config()
     st.dataframe(display_df(pd.DataFrame(cfg["sources"])), width="stretch", hide_index=True)
     phase1 = {s["key"]: s for s in cfg["sources"] if s.get("phase") == 1}
@@ -1427,6 +1546,8 @@ with tabs[9]:
             source = phase1["douyin_game_publisher"]
             result = DouyinGamePublisherAdapter(source["public_urls"], ROOT / "data" / "snapshots").collect()
             DB.upsert_tasks(result.tasks)
+            for task in result.tasks:
+                DB.upsert_campaign_candidate(candidate_from_task_like(task, source_id=source["key"]))
             DB.log_run(source["key"], ",".join(source["public_urls"]), result.status, result.message, len(result.tasks), 0, 0, 0)
             st.success(f"采集完成：{len(result.tasks)} 条。")
     with col2:
@@ -1434,6 +1555,8 @@ with tabs[9]:
             source = phase1["kuaishou_spark"]
             result = KuaishouSparkAdapter(source["public_urls"], ROOT / "data" / "snapshots").collect()
             DB.upsert_tasks(result.tasks)
+            for task in result.tasks:
+                DB.upsert_campaign_candidate(candidate_from_task_like(task, source_id=source["key"]))
             DB.log_run(source["key"], ",".join(source["public_urls"]), result.status, result.message, len(result.tasks), 0, 0, 0)
             st.success(f"采集完成：{len(result.tasks)} 条。")
 
@@ -1471,4 +1594,142 @@ with tabs[11]:
         st.info("暂无采集记录")
     else:
         st.dataframe(display_df(logs), width="stretch", hide_index=True)
+
+with tabs[12]:
+    st.subheader("候选商机")
+    candidates = campaign_candidates_df()
+    if candidates.empty:
+        st.info("暂无候选商机。公开采集、关键词搜索或手动导入后会先进入这里。")
+        auto_config = load_auto_config(AUTO_CONFIG_PATH)
+        discovery_summary = recent_discovery_summary()
+        logs = DB.df("crawl_runs")
+        latest_log = logs.sort_values("created_at").iloc[-1].to_dict() if not logs.empty else {}
+        status_df = source_status_df()
+        cols = st.columns(4)
+        cols[0].metric("自动采集", "启用" if auto_config.enabled else "停用")
+        cols[1].metric("最近采集时间", display_value(latest_log.get("created_at")))
+        cols[2].metric("数据源成功数", 0 if status_df.empty else int((status_df["status"] == "ok").sum()))
+        cols[3].metric("数据源失败数", 0 if status_df.empty else int((status_df["status"].fillna("") != "ok").sum()))
+        st.markdown("**最近一次发现结果**")
+        if discovery_summary:
+            st.json(discovery_summary)
+            reasons = discovery_summary.get("filter_reasons") or {}
+            if reasons:
+                st.markdown("**候选被过滤的主要原因**")
+                st.dataframe(pd.DataFrame([{"原因": k, "数量": v} for k, v in reasons.items()]), width="stretch", hide_index=True)
+        else:
+            st.info("暂无 discovery 运行记录。")
+        col_search, col_public, col_logs, col_manual = st.columns(4)
+        if col_search.button("执行一次搜索发现", width="stretch"):
+            summary = run_discovery_search(DB, max_queries=12, max_results_per_query=4)
+            st.success(f"搜索发现完成：新增 {summary.new_candidate_count}，更新 {summary.updated_candidate_count}。")
+            st.rerun()
+        if col_public.button("执行一次公开来源采集", width="stretch"):
+            summary = run_discovery_public_sources(DB, max_links_per_source=8)
+            st.success(f"公开来源采集完成：新增 {summary.new_candidate_count}，更新 {summary.updated_candidate_count}。")
+            st.rerun()
+        if col_logs.button("查看失败日志", width="stretch"):
+            failed = logs[logs["status"] != "ok"].tail(20) if not logs.empty else logs
+            st.dataframe(display_df(failed), width="stretch", hide_index=True)
+        with col_manual:
+            st.info("手动添加入口在“导入导出”页的活动链接表单。")
+    else:
+        status_options = ["全部"] + sorted(candidates["status"].dropna().unique().tolist())
+        selected_status = st.selectbox("候选状态", status_options, key="candidate_status_filter")
+        shown = candidates if selected_status == "全部" else candidates[candidates["status"] == selected_status]
+        st.dataframe(
+            display_df(shown[[
+                "campaign_name",
+                "content_platform",
+                "publisher_name",
+                "publisher_type",
+                "source_reliability",
+                "risk_level",
+                "status",
+                "deadline",
+                "来源链接",
+                "报名入口",
+            ]]),
+            width="stretch",
+            hide_index=True,
+            column_config={**source_link_column_config(), "报名入口": st.column_config.LinkColumn("报名入口", display_text="打开")},
+        )
+        candidate_labels = {
+            f"{row['campaign_name']} | {row['source_url']}": row["candidate_id"]
+            for _, row in candidates.iterrows()
+        }
+        selected_candidate = st.selectbox("选择候选复核", list(candidate_labels.keys()), key="candidate_select")
+        selected_row = candidates[candidates["candidate_id"] == candidate_labels[selected_candidate]].iloc[0].to_dict()
+        with st.expander("校验细节", expanded=True):
+            st.write(display_value(selected_row.get("validation_notes")))
+            st.write(f"风险信号：{display_value(selected_row.get('risk_signals'))}")
+            st.link_button("打开来源", str(selected_row.get("source_url")), width="stretch")
+            if not is_missing(selected_row.get("registration_url")):
+                st.link_button("打开报名入口", str(selected_row.get("registration_url")), width="stretch")
+        col_validate, col_promote = st.columns(2)
+        if col_validate.button("重新校验候选", width="stretch"):
+            validated = validate_candidate(selected_row)
+            DB.upsert_campaign_candidate(validated)
+            st.success(f"已重新校验：{validated['status']}。")
+            st.rerun()
+        if col_promote.button("验证通过并转为正式商机", width="stretch"):
+            validated = validate_candidate(selected_row)
+            if validated["status"] != "验证通过":
+                DB.upsert_campaign_candidate(validated)
+                st.warning("该候选未通过校验，已保留在候选表。")
+            else:
+                campaign = campaign_record_from_candidate(validated)
+                DB.upsert_campaign(campaign)
+                DB.con.execute(
+                    "update campaign_candidates set status = ?, merged_into_campaign_id = ? where candidate_id = ?",
+                    ["已转正式", campaign["campaign_id"], validated["candidate_id"]],
+                )
+                st.success("已转入正式商机。")
+            st.rerun()
+    source_candidates = DB.df("source_discovery_candidates")
+    if not source_candidates.empty:
+        st.markdown("**潜在新数据源**")
+        st.dataframe(display_df(source_candidates), width="stretch", hide_index=True)
+
+with tabs[13]:
+    st.subheader("正式商机")
+    campaigns = campaigns_df()
+    if campaigns.empty:
+        st.info("暂无正式商机。候选必须通过校验后才会进入这里。")
+    else:
+        st.dataframe(
+            display_df(campaigns[[
+                "campaign_name",
+                "content_platform",
+                "source_platform",
+                "publisher_name",
+                "publisher_type",
+                "reward_model",
+                "expected_income",
+                "estimated_production_hours",
+                "expected_hourly_income",
+                "source_reliability",
+                "risk_level",
+                "recommendation",
+                "score",
+                "status",
+                "deadline",
+                "来源链接",
+                "报名入口",
+            ]]),
+            width="stretch",
+            hide_index=True,
+            column_config={**source_link_column_config(), "报名入口": st.column_config.LinkColumn("报名入口", display_text="打开")},
+        )
+        selected = st.selectbox(
+            "选择商机查看评分原因",
+            [f"{row['campaign_name']} | {row['campaign_id']}" for _, row in campaigns.iterrows()],
+            key="campaign_detail_select",
+        )
+        campaign_id = selected.rsplit("|", 1)[-1].strip()
+        row = campaigns[campaigns["campaign_id"] == campaign_id].iloc[0].to_dict()
+        st.markdown("**评分原因**")
+        for item in str(row.get("score_reasons") or "").splitlines():
+            if item.strip():
+                st.write(f"- {item.strip()}")
 

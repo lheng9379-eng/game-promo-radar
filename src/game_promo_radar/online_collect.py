@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 
 from .adapters.base import save_snapshot
 from .adapters.public_web import parse_public_page
+from .campaigns import candidate_from_task_like
 from .db import RadarDB
 from .models import Task, normalize_source_url
 from .rules import is_missing, lifecycle_status
@@ -521,6 +522,13 @@ def _value_keywords(text: str) -> str | None:
     return "、".join(dict.fromkeys(hits)) or None
 
 
+def _upsert_candidate_for_task(db: RadarDB, task: Task, source_id: str | None = None, raw_text: str | None = None) -> None:
+    try:
+        db.upsert_campaign_candidate(candidate_from_task_like(task, source_id=source_id, raw_text=raw_text))
+    except Exception as exc:
+        db.log_run("campaign_candidate_sync", task.source_url, "blocked", str(exc), 0, 1, 0, 0)
+
+
 def task_from_public_html(url: str, html: str, snapshot_dir: str | Path, fallback_platform: str | None = None) -> Task:
     snapshot = save_snapshot(snapshot_dir, "online_public", html)
     platform = infer_platform(url, fallback_platform)
@@ -705,6 +713,7 @@ def collect_public_urls(
                     continue
                 task = task_from_public_html(page_url, page_html, snapshot_dir, page_platform)
                 status = db.upsert_task(task)
+                _upsert_candidate_for_task(db, task, source_key, _clean_html_text(page_html))
                 result.tasks.append(task)
                 result.success_count += 1
                 result.written_count += 1
@@ -770,6 +779,7 @@ def collect_detail_seed_urls(
                 continue
             task = task_from_public_html(url, html, snapshot_dir, platform)
             status = db.upsert_task(task)
+            _upsert_candidate_for_task(db, task, source_key, _clean_html_text(html))
             result.tasks.append(task)
             result.success_count += 1
             result.written_count += 1
@@ -872,6 +882,7 @@ def discover_similar_detail_pages(
                 continue
             task = task_from_public_html(url, html, snapshot_dir, platform)
             status = db.upsert_task(task)
+            _upsert_candidate_for_task(db, task, source_key, _clean_html_text(html))
             result.tasks.append(task)
             result.success_count += 1
             result.written_count += 1
@@ -944,6 +955,7 @@ def rediscover_details_from_existing_tasks(
                 continue
             task = task_from_public_html(url, html, snapshot_dir, platform)
             status = db.upsert_task(task)
+            _upsert_candidate_for_task(db, task, source_key, _clean_html_text(html))
             result.tasks.append(task)
             result.success_count += 1
             result.written_count += 1

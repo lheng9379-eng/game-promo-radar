@@ -157,6 +157,178 @@ class RadarDB:
         self.con.execute("alter table crawl_runs add column if not exists failure_count integer")
         self.con.execute("alter table crawl_runs add column if not exists new_count integer")
         self.con.execute("alter table crawl_runs add column if not exists updated_count integer")
+        self.con.execute("alter table crawl_runs add column if not exists retry_after varchar")
+        self.con.execute("alter table crawl_runs add column if not exists login_state varchar")
+        self.con.execute(
+            """
+            create table if not exists data_sources (
+              source_id varchar primary key,
+              source_name varchar,
+              source_type varchar,
+              content_platform varchar,
+              base_url varchar,
+              discovery_method varchar,
+              login_required boolean,
+              parser_name varchar,
+              crawl_frequency varchar,
+              enabled boolean,
+              reliability_level varchar,
+              last_success_at varchar,
+              last_error varchar,
+              consecutive_failures integer
+            )
+            """
+        )
+        for column in [
+            "source_id varchar",
+            "source_name varchar",
+            "source_type varchar",
+            "content_platform varchar",
+            "base_url varchar",
+            "discovery_method varchar",
+            "login_required boolean",
+            "parser_name varchar",
+            "crawl_frequency varchar",
+            "enabled boolean",
+            "reliability_level varchar",
+            "last_success_at varchar",
+            "last_error varchar",
+            "consecutive_failures integer",
+        ]:
+            self.con.execute(f"alter table data_sources add column if not exists {column}")
+        self.con.execute(
+            """
+            create table if not exists campaign_candidates (
+              candidate_id varchar primary key,
+              source_id varchar,
+              source_platform varchar,
+              content_platform varchar,
+              publisher_name varchar,
+              publisher_type varchar,
+              campaign_name varchar,
+              campaign_type varchar,
+              source_url varchar,
+              registration_url varchar,
+              reward_model varchar,
+              reward_min double,
+              reward_max double,
+              reward_pool double,
+              account_requirements varchar,
+              publish_requirements varchar,
+              material_requirements varchar,
+              deadline varchar,
+              source_reliability varchar,
+              risk_level varchar,
+              status varchar,
+              validation_notes varchar,
+              risk_signals varchar,
+              raw_text varchar,
+              raw_snapshot varchar,
+              discovered_at varchar,
+              last_verified_at varchar,
+              merged_into_campaign_id varchar
+            )
+            """
+        )
+        self.con.execute("create unique index if not exists idx_campaign_candidates_url on campaign_candidates(source_url)")
+        self.con.execute(
+            """
+            create table if not exists campaigns (
+              campaign_id varchar primary key,
+              content_platform varchar,
+              source_platform varchar,
+              publisher_name varchar,
+              publisher_type varchar,
+              campaign_name varchar,
+              campaign_type varchar,
+              source_url varchar,
+              registration_url varchar,
+              reward_model varchar,
+              reward_min double,
+              reward_max double,
+              reward_pool double,
+              guaranteed_reward double,
+              tiered_reward varchar,
+              view_based_settlement varchar,
+              win_probability double,
+              shortlist_probability double,
+              expected_income double,
+              estimated_production_hours double,
+              expected_hourly_income double,
+              account_requirements varchar,
+              publish_requirements varchar,
+              material_requirements varchar,
+              deadline varchar,
+              source_reliability varchar,
+              risk_level varchar,
+              recommendation varchar,
+              score double,
+              score_reasons varchar,
+              discovered_at varchar,
+              last_verified_at varchar,
+              status varchar,
+              raw_text varchar,
+              raw_snapshot varchar
+            )
+            """
+        )
+        self.con.execute("create unique index if not exists idx_campaigns_source_url on campaigns(source_url)")
+        self.con.execute(
+            """
+            create table if not exists campaign_progress (
+              campaign_id varchar,
+              status varchar,
+              signup_at varchar,
+              work_url varchar,
+              published_at varchar,
+              view_count integer,
+              like_count integer,
+              comment_count integer,
+              final_settlement_amount double,
+              settled_at varchar,
+              actual_production_hours double,
+              actual_hourly_income double,
+              notes varchar,
+              updated_at varchar
+            )
+            """
+        )
+        self.con.execute(
+            """
+            create table if not exists discovery_records (
+              record_id varchar primary key,
+              source_id varchar,
+              discovery_method varchar,
+              query varchar,
+              title varchar,
+              snippet varchar,
+              source_url varchar,
+              detail_status varchar,
+              filter_status varchar,
+              filter_reason varchar,
+              raw_text varchar,
+              raw_snapshot varchar,
+              discovered_at varchar,
+              candidate_id varchar
+            )
+            """
+        )
+        self.con.execute("create unique index if not exists idx_discovery_records_url on discovery_records(source_url)")
+        self.con.execute(
+            """
+            create table if not exists source_discovery_candidates (
+              domain varchar primary key,
+              source_name_guess varchar,
+              first_seen_at varchar,
+              last_seen_at varchar,
+              discovered_campaign_count integer,
+              valid_campaign_count integer,
+              reliability_guess varchar,
+              example_urls varchar,
+              status varchar
+            )
+            """
+        )
         self.con.execute(
             """
             update crawl_runs
@@ -478,10 +650,147 @@ class RadarDB:
             "opportunity_risk_signals",
             "opportunity_intel_links",
             "opportunity_unlinked_intel",
+            "data_sources",
+            "campaign_candidates",
+            "campaigns",
+            "campaign_progress",
+            "discovery_records",
+            "source_discovery_candidates",
         }
         if table not in allowed:
             raise ValueError(f"unsupported table: {table}")
         return self.con.execute(f"select * from {table}").df()
+
+    def upsert_data_source(self, record: dict) -> None:
+        rec = record.copy()
+        rec.setdefault("consecutive_failures", 0)
+        columns = [row[1] for row in self.con.execute("pragma table_info('data_sources')").fetchall()]
+        legacy_defaults = {
+            "source_key": rec.get("source_id"),
+            "name": rec.get("source_name"),
+            "platform": rec.get("content_platform"),
+            "task_category": "campaign",
+            "collection_method": rec.get("discovery_method"),
+            "link": rec.get("base_url"),
+            "frequency": rec.get("crawl_frequency"),
+            "notes": rec.get("source_type"),
+        }
+        for key, value in legacy_defaults.items():
+            if key in columns and key not in rec:
+                rec[key] = value
+        rec = {key: rec.get(key) for key in columns if key in rec}
+        existing = self.con.execute("select 1 from data_sources where source_id = ?", [rec.get("source_id")]).fetchone()
+        if existing:
+            update_columns = [col for col in rec if col != "source_id"]
+            assignments = ", ".join(f"{col} = ?" for col in update_columns)
+            self.con.execute(
+                f"update data_sources set {assignments} where source_id = ?",
+                [rec[col] for col in update_columns] + [rec["source_id"]],
+            )
+            return
+        columns = list(rec.keys())
+        placeholders = ", ".join(["?"] * len(columns))
+        self.con.execute(
+            f"insert into data_sources ({', '.join(columns)}) values ({placeholders})",
+            [rec[col] for col in columns],
+        )
+
+    def upsert_campaign_candidate(self, record: dict) -> str:
+        rec = record.copy()
+        rec.setdefault("discovered_at", now_iso())
+        rec.setdefault("status", "待验证")
+        columns = [row[1] for row in self.con.execute("pragma table_info('campaign_candidates')").fetchall()]
+        rec = {key: rec.get(key) for key in columns if key in rec}
+        existing = self.con.execute("select * from campaign_candidates where candidate_id = ?", [rec.get("candidate_id")]).fetchone()
+        if not existing and rec.get("source_url"):
+            existing = self.con.execute("select * from campaign_candidates where source_url = ?", [rec.get("source_url")]).fetchone()
+        if existing:
+            update_columns = [col for col in rec if col != "candidate_id" and rec.get(col) is not None]
+            assignments = ", ".join(f"{col} = ?" for col in update_columns)
+            key = existing[0]
+            self.con.execute(
+                f"update campaign_candidates set {assignments} where candidate_id = ?",
+                [rec[col] for col in update_columns] + [key],
+            )
+            return "updated"
+        columns = list(rec.keys())
+        placeholders = ", ".join(["?"] * len(columns))
+        self.con.execute(
+            f"insert into campaign_candidates ({', '.join(columns)}) values ({placeholders})",
+            [rec[col] for col in columns],
+        )
+        return "new"
+
+    def upsert_campaign(self, record: dict) -> str:
+        rec = record.copy()
+        rec.setdefault("status", "有效")
+        rec.setdefault("last_verified_at", now_iso())
+        columns = [row[1] for row in self.con.execute("pragma table_info('campaigns')").fetchall()]
+        rec = {key: rec.get(key) for key in columns if key in rec}
+        existing = self.con.execute("select 1 from campaigns where campaign_id = ?", [rec.get("campaign_id")]).fetchone()
+        if not existing and rec.get("source_url"):
+            existing = self.con.execute("select 1 from campaigns where source_url = ?", [rec.get("source_url")]).fetchone()
+        if existing:
+            update_columns = [col for col in rec if col != "campaign_id" and rec.get(col) is not None]
+            assignments = ", ".join(f"{col} = ?" for col in update_columns)
+            self.con.execute(
+                f"update campaigns set {assignments} where campaign_id = ?",
+                [rec[col] for col in update_columns] + [rec["campaign_id"]],
+            )
+            return "updated"
+        columns = list(rec.keys())
+        placeholders = ", ".join(["?"] * len(columns))
+        self.con.execute(f"insert into campaigns ({', '.join(columns)}) values ({placeholders})", [rec[col] for col in columns])
+        return "new"
+
+    def upsert_discovery_record(self, record: dict) -> str:
+        rec = record.copy()
+        rec.setdefault("discovered_at", now_iso())
+        columns = [row[1] for row in self.con.execute("pragma table_info('discovery_records')").fetchall()]
+        rec = {key: rec.get(key) for key in columns if key in rec}
+        existing = self.con.execute("select * from discovery_records where record_id = ?", [rec.get("record_id")]).fetchone()
+        if not existing and rec.get("source_url"):
+            existing = self.con.execute("select * from discovery_records where source_url = ?", [rec.get("source_url")]).fetchone()
+        if existing:
+            update_columns = [col for col in rec if col != "record_id" and rec.get(col) is not None]
+            assignments = ", ".join(f"{col} = ?" for col in update_columns)
+            self.con.execute(
+                f"update discovery_records set {assignments} where record_id = ?",
+                [rec[col] for col in update_columns] + [existing[0]],
+            )
+            return "updated"
+        columns = list(rec.keys())
+        placeholders = ", ".join(["?"] * len(columns))
+        self.con.execute(
+            f"insert into discovery_records ({', '.join(columns)}) values ({placeholders})",
+            [rec[col] for col in columns],
+        )
+        return "new"
+
+    def upsert_source_discovery_candidate(self, record: dict) -> None:
+        rec = record.copy()
+        rec.setdefault("first_seen_at", now_iso())
+        rec.setdefault("last_seen_at", now_iso())
+        rec.setdefault("status", "待确认")
+        rec.setdefault("discovered_campaign_count", 0)
+        rec.setdefault("valid_campaign_count", 0)
+        columns = [row[1] for row in self.con.execute("pragma table_info('source_discovery_candidates')").fetchall()]
+        rec = {key: rec.get(key) for key in columns if key in rec}
+        existing = self.con.execute("select * from source_discovery_candidates where domain = ?", [rec.get("domain")]).fetchone()
+        if existing:
+            update_columns = [col for col in rec if col not in {"domain", "first_seen_at"} and rec.get(col) is not None]
+            assignments = ", ".join(f"{col} = ?" for col in update_columns)
+            self.con.execute(
+                f"update source_discovery_candidates set {assignments} where domain = ?",
+                [rec[col] for col in update_columns] + [rec["domain"]],
+            )
+            return
+        columns = list(rec.keys())
+        placeholders = ", ".join(["?"] * len(columns))
+        self.con.execute(
+            f"insert into source_discovery_candidates ({', '.join(columns)}) values ({placeholders})",
+            [rec[col] for col in columns],
+        )
 
     def insert_record(self, table: str, record: dict) -> None:
         allowed = {
